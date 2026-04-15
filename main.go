@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"path/filepath"
 
 	"golang.org/x/xerrors"
 
@@ -23,13 +24,13 @@ import (
 	"github.com/aquasecurity/vuln-list-update/nvd"
 	"github.com/aquasecurity/vuln-list-update/openeuler"
 	oracleoval "github.com/aquasecurity/vuln-list-update/oracle/oval"
+	"github.com/aquasecurity/vuln-list-update/osv"
 	"github.com/aquasecurity/vuln-list-update/osvdev"
 	"github.com/aquasecurity/vuln-list-update/photon"
 	redhatcsafvex "github.com/aquasecurity/vuln-list-update/redhat/csaf"
 	redhatoval "github.com/aquasecurity/vuln-list-update/redhat/oval"
 	"github.com/aquasecurity/vuln-list-update/redhat/securitydataapi"
 	"github.com/aquasecurity/vuln-list-update/rocky"
-	"github.com/aquasecurity/vuln-list-update/rootio"
 	"github.com/aquasecurity/vuln-list-update/seal"
 	susecvrf "github.com/aquasecurity/vuln-list-update/suse/cvrf"
 	"github.com/aquasecurity/vuln-list-update/ubuntu"
@@ -189,8 +190,11 @@ func run() error {
 			return xerrors.Errorf("eolDates update error: %w", err)
 		}
 	case "rootio":
-		ru := rootio.NewUpdater()
-		if err := ru.Update(); err != nil {
+		rootOSV := osv.NewDatabase(
+			filepath.Join(utils.VulnListDir(), "rootio"),
+			map[string]osv.Ecosystem{"Root": {URL: "https://api.root.io/external/osv/all.zip", Dir: ""}},
+		)
+		if err := rootOSV.Update(); err != nil {
 			return xerrors.Errorf("Root.io update error: %w", err)
 		}
 	case "seal":
