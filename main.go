@@ -5,6 +5,7 @@ import (
 	"flag"
 	"log"
 	"os"
+	"path/filepath"
 
 	githubql "github.com/shurcooL/githubv4"
 	"golang.org/x/oauth2"
@@ -34,7 +35,6 @@ import (
 	redhatoval "github.com/aquasecurity/vuln-list-update/redhat/oval"
 	"github.com/aquasecurity/vuln-list-update/redhat/securitydataapi"
 	"github.com/aquasecurity/vuln-list-update/rocky"
-	"github.com/aquasecurity/vuln-list-update/rootio"
 	susecvrf "github.com/aquasecurity/vuln-list-update/suse/cvrf"
 	"github.com/aquasecurity/vuln-list-update/ubuntu"
 	"github.com/aquasecurity/vuln-list-update/utils"
@@ -203,9 +203,13 @@ func run() error {
 			return xerrors.Errorf("eolDates update error: %w", err)
 		}
 	case "rootio":
-		ru := rootio.NewUpdater()
-		if err := ru.Update(); err != nil {
-			return xerrors.Errorf("Root.io update error: %w", err)
+		rootOSV := osv.NewOsv(
+			osv.WithURL("https://api.root.io/external/osv/all.zip"),
+			osv.WithDir(filepath.Join(utils.VulnListDir(), "rootio")),
+			osv.WithEcosystem(map[string]string{"Root": ""}),
+		)
+		if err := rootOSV.Update(); err != nil {
+			return err
 		}
 	default:
 		return xerrors.New("unknown target")

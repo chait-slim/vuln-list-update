@@ -1,7 +1,10 @@
 package osv_test
 
 import (
+	"archive/zip"
+	"bytes"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -117,4 +120,78 @@ func Test_Update(t *testing.T) {
 			}
 		})
 	}
+}
+
+func Test_Update_Root(t *testing.T) {
+	// Build all.zip in memory with test advisories
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	advisories := []struct {
+		filename string
+		content  string
+	}{
+		{
+			filename: "ROOT-OS-ALPINE-318-CVE-2023-38473.json",
+			content:  `{"schema_version":"1.6.0","id":"ROOT-OS-ALPINE-318-CVE-2023-38473","upstream":["CVE-2023-38473"],"affected":[{"package":{"name":"rootio-curl","ecosystem":"Alpine"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"7.88.1-r1.root.io.1"}]}]}],"database_specific":{"source":"Root","distro":"alpine","distro_version":"3.18"}}`,
+		},
+		{
+			filename: "ROOT-APP-NPM-CVE-2023-5678.json",
+			content:  `{"schema_version":"1.6.0","id":"ROOT-APP-NPM-CVE-2023-5678","upstream":["CVE-2023-5678"],"affected":[{"package":{"name":"@rootio/axios","ecosystem":"npm"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"1.6.0.root.io.1"}]}]}],"database_specific":{"source":"Root","distro":"","distro_version":""}}`,
+		},
+		{
+			// Empty affected — must be skipped without panic
+			filename: "ROOT-OS-ALPINE-318-CVE-2099-EMPTY.json",
+			content:  `{"schema_version":"1.6.0","id":"ROOT-OS-ALPINE-318-CVE-2099-EMPTY","upstream":["CVE-2099-99999"],"affected":[],"database_specific":{"source":"Root"}}`,
+		},
+	}
+
+	for _, adv := range advisories {
+		f, err := zw.Create(adv.filename)
+		require.NoError(t, err)
+		_, err = f.Write([]byte(adv.content))
+		require.NoError(t, err)
+	}
+	require.NoError(t, zw.Close())
+
+	ts := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(buf.Bytes())
+	}))
+	defer ts.Close()
+
+	testDir := t.TempDir()
+	db := osv.NewOsv(
+		osv.WithURL(ts.URL+"/all.zip"), // complete URL — no %s
+		osv.WithDir(testDir),
+		osv.WithEcosystem(map[string]string{"Root": ""}),
+	)
+
+	require.NoError(t, db.Update())
+
+	// OS advisory: <package>/<id>.json
+	content, err := os.ReadFile(filepath.Join(testDir, "rootio-curl", "ROOT-OS-ALPINE-318-CVE-2023-38473.json"))
+	require.NoError(t, err)
+	assert.JSONEq(t,
+		`{"schema_version":"1.6.0","id":"ROOT-OS-ALPINE-318-CVE-2023-38473","upstream":["CVE-2023-38473"],"affected":[{"package":{"name":"rootio-curl","ecosystem":"Alpine"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"7.88.1-r1.root.io.1"}]}]}],"database_specific":{"source":"Root","distro":"alpine","distro_version":"3.18"}}`,
+		string(content),
+	)
+
+	// npm advisory: @rootio/axios produces two-level nesting
+	content, err = os.ReadFile(filepath.Join(testDir, "@rootio", "axios", "ROOT-APP-NPM-CVE-2023-5678.json"))
+	require.NoError(t, err)
+	assert.JSONEq(t,
+		`{"schema_version":"1.6.0","id":"ROOT-APP-NPM-CVE-2023-5678","upstream":["CVE-2023-5678"],"affected":[{"package":{"name":"@rootio/axios","ecosystem":"npm"},"ranges":[{"type":"ECOSYSTEM","events":[{"introduced":"0"},{"fixed":"1.6.0.root.io.1"}]}]}],"database_specific":{"source":"Root","distro":"","distro_version":""}}`,
+		string(content),
+	)
+
+	// Empty affected entry must produce no file anywhere in the output tree
+	err = filepath.WalkDir(testDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		assert.NotEqual(t, "ROOT-OS-ALPINE-318-CVE-2099-EMPTY.json", d.Name(),
+			"empty-affected advisory should not be written")
+		return nil
+	})
+	require.NoError(t, err)
 }

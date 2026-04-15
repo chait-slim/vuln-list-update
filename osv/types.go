@@ -40,14 +40,17 @@ type Reference struct {
 // OSV represents Open Source Vulnerability format
 // ref. https://ossf.github.io/osv-schema
 type OSV struct {
-	ID         string      `json:"id,omitempty"`
-	Modified   string      `json:"modified,omitempty"`
-	Published  string      `json:"published,omitempty"`
-	Withdrawn  string      `json:"withdrawn,omitempty"`
-	Aliases    []string    `json:"aliases,omitempty"`
-	Related    []string    `json:"related,omitempty"`
-	Summary    string      `json:"summary,omitempty"`
-	Details    string      `json:"details,omitempty"`
-	Affected   []Affected  `json:"affected,omitempty"` //collection based on https://ossf.github.io/osv-schema/
-	References []Reference `json:"references,omitempty"`
+	SchemaVersion    string      `json:"schema_version,omitempty"`
+	ID               string      `json:"id,omitempty"`
+	Modified         string      `json:"modified,omitempty"`
+	Published        string      `json:"published,omitempty"`
+	Withdrawn        string      `json:"withdrawn,omitempty"`
+	Aliases          []string    `json:"aliases,omitempty"`
+	Related          []string    `json:"related,omitempty"`
+	Upstream         []string    `json:"upstream,omitempty"`
+	Summary          string      `json:"summary,omitempty"`
+	Details          string      `json:"details,omitempty"`
+	Affected         []Affected  `json:"affected,omitempty"` //collection based on https://ossf.github.io/osv-schema/
+	References       []Reference `json:"references,omitempty"`
+	DatabaseSpecific interface{} `json:"database_specific,omitempty"`
 }

@@ -8,6 +8,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"golang.org/x/xerrors"
 
@@ -73,21 +74,38 @@ func (osv *Database) Update() error {
 	ctx := context.Background()
 	for ecoSystem, ecoSystemDir := range osv.ecosystemDirs {
 		log.Printf("Updating OSV %s advisories", ecoSystem)
-		tempDir, err := utils.DownloadToTempDir(ctx, fmt.Sprintf(osv.url, ecoSystem))
+
+		var downloadURL string
+		if strings.Contains(osv.url, "%s") {
+			downloadURL = fmt.Sprintf(osv.url, ecoSystem)
+		} else {
+			downloadURL = osv.url
+		}
+
+		tempDir, err := utils.DownloadToTempDir(ctx, downloadURL)
 		if err != nil {
-			return xerrors.Errorf("failed to download %s: %w", fmt.Sprintf(osv.url, ecoSystem), err)
+			return xerrors.Errorf("failed to download %s: %w", downloadURL, err)
 		}
 
 		err = filepath.WalkDir(tempDir, func(path string, d fs.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
 			if !d.IsDir() {
 				f, err := os.Open(path)
 				if err != nil {
 					return xerrors.Errorf("file open error (%s): %w", path, err)
 				}
+				defer f.Close()
 
 				var parsed OSV
 				if err = json.NewDecoder(f).Decode(&parsed); err != nil {
 					return xerrors.Errorf("unable to parse json %s: %w", path, err)
+				}
+
+				if len(parsed.Affected) == 0 {
+					log.Printf("skipping %s: no affected entries", parsed.ID)
+					return nil
 				}
 
 				filePath := filepath.Join(osv.dir, ecoSystemDir, parsed.Affected[0].Package.Name, fmt.Sprintf("%s.json", parsed.ID))
